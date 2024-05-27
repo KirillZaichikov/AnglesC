@@ -107,41 +107,35 @@ void ortVecsColMaj(double* vecs, int rows, int cols, double* projSum) {
     }
 }
 
-void solver(double* M, int dim, double* Res){
-    double D = pow((-M[3]-M[0]), 2.0) - 4 * (M[0]*M[3]-M[1]*M[2]);
-    Res[0] = ((M[3]+M[0])+pow(D, 0.5))/2;
-    Res[1] = ((M[3]+M[0])-pow(D, 0.5))/2;
-    //std::cout << Res[0]<< ' ' << Res[1] << std::endl;
-}
-
 void qrDecomposition(double* R, double* Q, double* A, int rows, int cols, double* projSum) {
     memcpy(Q, A, cols * cols * sizeof(double));
-    matrixTranspose(Q, cols, cols);
-    ortVecs(Q, cols, rows, projSum);
-    normalizeVecs(Q, cols, rows, 1.0);
-    matrixMult(R, Q, cols, cols, A, cols, cols);
-    matrixTranspose(Q, cols, cols);
+    ortVecsColMaj(Q, rows, cols, projSum);
+    normalizeVecsColMaj(Q, rows, cols, 1.0);
+    matrixTranspose(Q, cols, rows);
+    matrixMult(R, Q, rows, cols, A, rows, cols);
+    matrixTranspose(Q, cols, rows);
+}
+
+void compare(double * a, double n1){
+    int n = n1;
+    for (int i = 0; i < n-1; i++) {
+        for (int j = 0; j < n - i - 1; j++) {
+            if (a[j] > a[j + 1]) {
+                double tmp = a[j];
+                a[j] = a[j + 1];
+                a[j + 1] = tmp;
+            }
+        }
+    }
 }
 
 void findEigenValues(double* A, double *R, double *Q, double* projSum, int rows, int cols, int numberOfIterations, double *eigenValues) {
-    /*
-    for (int32_t i = 0; i < rows; i++)
-        for (int32_t j = 0; j < rows; j++) {
-            printf("%lf ", A[i*cols + j]);
-        }*/
-    
     for (int i = 0; i < numberOfIterations; i++) {
-        // printf("%d",i);
         qrDecomposition(R, Q, A, rows, cols, projSum);
         matrixMult(A, R, cols, cols, Q, cols, cols);
-        /*
-        for (int32_t i = 0; i < rows; i++)
-            for (int32_t j = 0; j < rows; j++) {
-                printf("%lf ", A[i*cols + j]);
-            }*/
     }
     for (int i = 0; i < rows; i++) {
         eigenValues[i] = A[i * cols + i];
-        //printf("%lf", eigenValues[i]);
     }
+    compare(eigenValues, rows);
 }

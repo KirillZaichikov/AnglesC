@@ -7,19 +7,6 @@
 #include <iostream>
 
 
-void compare(double * a, double n1){
-    int n = n1;
-    for (int i = 0; i < n-1; i++) {
-        for (int j = 0; j < n - i - 1; j++) {
-            if (a[j] > a[j + 1]) {
-                double tmp = a[j];
-                a[j] = a[j + 1];
-                a[j + 1] = tmp;
-            }
-        }
-    }
-}
-
 //work
 void cudaAngleNodeWarm(double *main, double *sub, double *essCur, const int dimension,
                        void(*diffFunc)(const double*, double*, const double*), void(*diffFuncVar)(const double*, double*, const double*, const double*),
@@ -202,20 +189,8 @@ int cudaAngleNodeCalculate(double *mainTrajectory, double *slaveTrajectories, do
         memcpy(dotProductsMatrixT, dotProductsMatrix, eSSdim * eSSdim * sizeof(double));
         matrixTranspose(dotProductsMatrixT, eSSdim, eSSdim);
         matrixMult(A, dotProductsMatrixT, eSSdim, eSSdim, dotProductsMatrix, eSSdim, eSSdim);
-        for (int i = 0; i < eSSdim; i++) {
-            for (int j = 0; j < eSSdim; j++) {
-                printf("%lf ", A[i*eSSdim+j]);
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
         findEigenValues(A, R, Q, projSum, eSSdim, eSSdim, 20, eigenValues);
-        // solver(A, eSSdim, eigenValues);
         compare(eigenValues, eSSdim);
-        for (int i = 0; i < eSSdim; i++){
-            printf("%lf ", eigenValues[i]);
-        }std::cout << std::endl;
-        std::cout << std::endl;
         double minSingularVal = pow(eigenValues[0], 0.5);
         double phi_cur = std::abs(3.14159265358979323846264338327950288 / 2. - acos(minSingularVal));
         if (phi_cur < *phi) {
@@ -373,14 +348,11 @@ int cudaAngleNode2Calculate(double *mainTrajectory, double *slaveTrajectories, d
         for (int i = 0; i < eCUdim; i++)
             for (int j = 0; j < eCUdim; j++) {
                 dotProductsMatrix[i*eCUdim + j] = dotProduct(ncu_s + stepCount * dimension * eCUdim + i * dimension, slaveTrajBw + j * dimension, dimension);
-                //for (int32_t i = 0; i < dimension; i++)
-                //    printf("%lf ", dotProduct(ncu_s + stepCount * dimension * eSSdim + i * dimension, slaveTrajBw + j * dimension, dimension));
             }
         memcpy(dotProductsMatrixT, dotProductsMatrix, eCUdim * eCUdim * sizeof(double));
         matrixTranspose(dotProductsMatrixT, eCUdim, eCUdim);
         matrixMult(A, dotProductsMatrixT, eCUdim, eCUdim, dotProductsMatrix, eCUdim, eCUdim);
         findEigenValues(A, R, Q, projSum, eCUdim, eCUdim, 50, eigenValues);
-        //solver(A, eCUdim, eigenValues);
         compare(eigenValues, eCUdim);
         double minSingularVal = pow(eigenValues[0], 0.5);
         double phi_cur = std::abs(3.14159265358979323846264338327950288 / 2. - acos(minSingularVal));
@@ -391,10 +363,4 @@ int cudaAngleNode2Calculate(double *mainTrajectory, double *slaveTrajectories, d
     for (int i = 0; i < eCUdim; i++)
         lyapExpBw[i] = lyapExpBw[i] / calcTime;
     return 0;
-    //for (int32_t i = 0; i < eSSdim; i++) {
-    //    for (int32_t j = 0; j < dimension; j++) {
-    //        printf("%d, %d, %lf ", i, j, ncu_s + stepCount * dimension * eSSdim + i * dimension + j);
-    //    }
-    //    printf("\n");
-    //}
 }
