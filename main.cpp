@@ -1,7 +1,9 @@
 // #include "functionsLaser.cpp"
-#include "functions.cpp"
+// #include "functions.cpp"
+#include "functionsShimizu.cpp"
 #include "consts.h"
 #include "Node.cpp"
+#include "utils.h"
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
@@ -11,19 +13,20 @@ using namespace std;
 
 int main(){
     printf("***PROGRAM START***\n");
-    void (*diffFunc)(const double*, double*, const double*) {LorenzDoub_6D_flow};
-    void (*diffFuncVar)(const double*, double*, const double*, const double*) {LorenzDoub_6D_flow_var};
-    void (*diffFuncVarTrans)(const double*, double*, const double*, const double*) {LorenzDoub_6D_flow_var_trans};
-    void (*diffFuncVarRev)(const double*, double*, const double*, const double*) {LorenzDoub_6D_flow_var_rev};
-    void (*diffFuncVarTransRev)(const double*, double*, const double*, const double*) {LorenzDoub_6D_flow_var_trans_rev};
+    void (*diffFunc)(const double*, double*, const double*) {Shimizu_3D_flow};
+    void (*diffFuncVar)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var};
+    void (*diffFuncVarTrans)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var_trans};
+    void (*diffFuncVarRev)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var_rev};
+    void (*diffFuncVarTransRev)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var_trans_rev};
     // void (*diffFunc)(const double*, double*, const double*) {laser_6D_flow};
     // void (*diffFuncVar)(const double*, double*, const double*, const double*) {laser_6D_flow_var};
     // void (*diffFuncVarTrans)(const double*, double*, const double*, const double*) {laser_6D_flow_var_trans};
     // void (*diffFuncVarRev)(const double*, double*, const double*, const double*) {laser_6D_flow_var_rev};
     // void (*diffFuncVarTransRev)(const double*, double*, const double*, const double*) {laser_6D_flow_var_trans_rev};
     
-    int paramsDim = 6;
-    double params[] = {9, 25, 2.666666666666, 0, 0.1};
+    int paramsDim = 2;
+    double params[] = {0.75, 0.5};
+    //double params[] = {1, -1, 1.8, 0.8, 0.5};
     // double params[] = {0, 0, 50.0, -1.0, 0.0, 1.15};
     double param1[DISCR];
     double param2[DISCR];
@@ -32,23 +35,24 @@ int main(){
     //     param2[i] = 0.117 + (0.152-0.117)*i/DISCR;
     //     std::cout << param1[i];
     // }
-    param1[0] = 9;
-    param2[0] = 25;
+    param1[0] = 0.75;
+    param2[0] = 0.5;
     ofstream fout;
     fout.open("File.txt");
     
-    int dimension = 6;
+    bool type = 1; // 1 - flow
+    int dimension = 3;
     int samplesNum = 1;
     int samplesCounter = 0;
-    int expsNum = 6;
-    int essDim = 2;
+    int expsNum = 3;
+    int essDim = 1;
     double eps = 1;
-    double step = 0.001;
+    double step = 0.01;
     double timeSkip = 100;
     double timeSkipClP = 50;
-    double calcTime = 1000;
+    double calcTime = 2000;
     double addSkipSteps = 1;
-    double inits[] = {0.0000001, 0, 0, 0, 0, 0};
+    double inits[] = {0.0000001, 0, 0, 0, 0};
     double main[MAX_DIMENSION];
     double lExp[MAX_DIMENSION];
     double lExpBw[MAX_DIMENSION];
@@ -60,11 +64,19 @@ int main(){
     double ess[MAX_DIMENSION * MAX_DIMENSION];
     double minPhi = 300;
 
+    int eigenIteration;
+    if ((essDim == 1) || (dimension-essDim == 1)){
+        eigenIteration = 1;
+    } else {
+        eigenIteration = 50;
+    }
+
     size_t traj_dots_cnt = (size_t) ((calcTime / samplesNum + timeSkipClP) / step);
     double* traj_s = (double*)malloc(traj_dots_cnt * dimension * sizeof(double));
     size_t ncu_dots_cnt = (size_t) (calcTime / samplesNum / step);
     double* ncu_s;
-    if (dimension / 2 <= essDim){
+
+    if ((dimension / 2 <= essDim) && (essDim !=1)){
         std::cout << "CALC BY CU VECTORS" << std::endl;
         ncu_s = (double*)malloc(ncu_dots_cnt * dimension * (dimension - essDim) * sizeof(double));
     } else {
@@ -79,16 +91,19 @@ int main(){
     for (int d = 0; d < dimension; ++d) {
         main[d] = inits[d];
     }
-    double paramsAll[] = {param1[0], param2[0], params[2], params[3], params[4], params[5]};
-    if (dimension / 2 <= essDim) {
-        cudaAngleNode2Warm(main, sub, ess, dimension, diffFunc, diffFuncVar, paramsAll, eps, expsNum,
-                        step, timeSkip, timeSkipClP, essDim);
+    MemoryForIntegrator integratorParams{};
+    MemoryForMatrix masForMatrix{};
+
+    double paramsAll[] = {param1[0], param2[0]};
+    if ((dimension / 2 <= essDim) && (essDim !=1)) {
+        cudaAngleCUNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, paramsAll, eps, expsNum,
+                        step, timeSkip, timeSkipClP, addSkipSteps, type, essDim, &integratorParams);
         for (int s = 0; s < samplesNum; s++) {
-            auto res = cudaAngleNode2Calculate(main, sub, ess, dimension,
+            auto res = cudaAngleCUNodeCalculate(main, sub, ess, dimension,
                 diffFunc, diffFuncVar, diffFuncVarTrans,
                 paramsAll, eps, lExp, lExpBw, &minPhi,
                 expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
-                traj_s, ncu_s, essDim);
+                traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
             for (int i =0; i<expsNum; i++){
                 lExp1[i] += lExp[i];
                 lExpBw1[i] += lExpBw[i];
@@ -99,15 +114,15 @@ int main(){
         }
     } else {
         printf("***START WARM***\n");
-        cudaAngleNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, diffFuncVarTransRev, params, eps, expsNum,
-                        step, timeSkip, timeSkipClP, essDim);
+        cudaAngleSSNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, diffFuncVarTransRev, paramsAll, eps, expsNum,
+                        step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
         printf("***END WARM***\n");
         for (int s = 0; s < samplesNum; s++) {
-            auto res = cudaAngleNodeCalculate(main, sub, ess, dimension,
+            auto res = cudaAngleSSNodeCalculate(main, sub, ess, dimension,
                 diffFunc, diffFuncVar, diffFuncVarRev, diffFuncVarTransRev,
-                params, eps, lExp, lExpBw, lExpT, &minPhi,
+                paramsAll, eps, lExp, lExpBw, &minPhi,
                 expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
-                traj_s, ncu_s, essDim);
+                traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
             for (int i =0; i<expsNum; i++){
                 lExp1[i] += lExp[i];
                 lExpBw1[i] += lExpBw[i];
@@ -131,4 +146,24 @@ int main(){
     std::cout << std::endl;
     std::cout << "Angle:" << minPhi;
     return 0;
+}
+
+void memSetZero(struct MemoryForIntegrator intMem, struct MemoryForMatrix matMem) {
+    /*После работы алгоритма вдоль одного куска зануляет переменные*/
+    memset(matMem.dotProductsMatrix, 0., MAX_DIMENSION * MAX_DIMENSION * sizeof(double));
+    memset(matMem.dotProductsMatrixT, 0., MAX_DIMENSION * MAX_DIMENSION * sizeof(double));
+    memset(matMem.A, 0., MAX_DIMENSION * MAX_DIMENSION * sizeof(double));
+    memset(matMem.R, 0., MAX_DIMENSION * MAX_DIMENSION * sizeof(double));
+    memset(matMem.Q, 0., MAX_DIMENSION * MAX_DIMENSION * sizeof(double));
+    memset(matMem.eigenValues, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k1, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k2, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k3, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k4, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k5, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k6, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k7, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.k8, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.arg, 0., MAX_DIMENSION * sizeof(double));
+    memset(intMem.projSum, 0., MAX_DIMENSION * sizeof(double));
 }

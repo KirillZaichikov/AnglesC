@@ -116,9 +116,10 @@ void qrDecomposition(double* R, double* Q, double* A, int rows, int cols, double
     matrixTranspose(Q, cols, rows);
 }
 
-void compare(double * a, double n1){
+void basic_sort(double * a, double n1) {
+    /*Алгоритм сортировки пузырьком*/
     int n = n1;
-    for (int i = 0; i < n-1; i++) {
+    for (int i = 0; i < n - 1; i++) {
         for (int j = 0; j < n - i - 1; j++) {
             if (a[j] > a[j + 1]) {
                 double tmp = a[j];
@@ -129,7 +130,9 @@ void compare(double * a, double n1){
     }
 }
 
-void findEigenValues(double* A, double *R, double *Q, double* projSum, int rows, int cols, int numberOfIterations, double *eigenValues) {
+double findEigenValues(double* A, double *R, double *Q, double* projSum, int rows, int cols, int numberOfIterations, double *eigenValues) {
+    /*Вычисление собственных чисел матрицы итерационным QR-алгоритмом*/
+    //TODO:подсчет ошибки, для определения необходимого количества итераций
     for (int i = 0; i < numberOfIterations; i++) {
         qrDecomposition(R, Q, A, rows, cols, projSum);
         matrixMult(A, R, cols, cols, Q, cols, cols);
@@ -137,5 +140,6 @@ void findEigenValues(double* A, double *R, double *Q, double* projSum, int rows,
     for (int i = 0; i < rows; i++) {
         eigenValues[i] = A[i * cols + i];
     }
-    compare(eigenValues, rows);
+    basic_sort(eigenValues, rows);
+    return eigenValues[0];
 }
