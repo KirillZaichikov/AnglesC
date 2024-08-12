@@ -6,10 +6,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include "third-party/json.hpp"
 #define DISCR 200
 using namespace std;
+using json = nlohmann::json;
 
-int main(){
+int main(int argc, char* argv[]){
     printf("***PROGRAM START***\n");
     void (*diffFunc)(const double*, double*, const double*) {LorenzDoub_6D_flow};
     void (*diffFuncVar)(const double*, double*, const double*, const double*) {LorenzDoub_6D_flow_var};
@@ -22,33 +24,6 @@ int main(){
     // void (*diffFuncVarRev)(const double*, double*, const double*, const double*) {laser_6D_flow_var_rev};
     // void (*diffFuncVarTransRev)(const double*, double*, const double*, const double*) {laser_6D_flow_var_trans_rev};
     
-    int paramsDim = 6;
-    double params[] = {9, 25, 2.666666666666, 0, 0.1};
-    // double params[] = {0, 0, 50.0, -1.0, 0.0, 1.15};
-    double param1[DISCR];
-    double param2[DISCR];
-    // for (int i=0;i<DISCR;i++){
-    //     param1[i] = 4.666 + (4.710-4.666)*i/DISCR;
-    //     param2[i] = 0.117 + (0.152-0.117)*i/DISCR;
-    //     std::cout << param1[i];
-    // }
-    param1[0] = 9;
-    param2[0] = 25;
-    ofstream fout;
-    fout.open("File.txt");
-    
-    int dimension = 6;
-    int samplesNum = 1;
-    int samplesCounter = 0;
-    int expsNum = 6;
-    int essDim = 2;
-    double eps = 1;
-    double step = 0.001;
-    double timeSkip = 100;
-    double timeSkipClP = 50;
-    double calcTime = 1000;
-    double addSkipSteps = 1;
-    double inits[] = {0.0000001, 0, 0, 0, 0, 0};
     double main[MAX_DIMENSION];
     double lExp[MAX_DIMENSION];
     double lExpBw[MAX_DIMENSION];
@@ -58,7 +33,42 @@ int main(){
     double lExpT1[MAX_DIMENSION];
     double sub[MAX_DIMENSION * MAX_DIMENSION];
     double ess[MAX_DIMENSION * MAX_DIMENSION];
+    double param1[DISCR];
+    double param2[DISCR];
     double minPhi = 300;
+
+    std::fstream File;
+    File.open(R"(D:\Study\Codes\AnglesC\data.json)", std::ios::in);
+
+    json Doc(json::parse(File));
+    // double params[] = {0, 0, 50.0, -1.0, 0.0, 1.15};
+    // for (int i=0;i<DISCR;i++){
+    //     param1[i] = 4.666 + (4.710-4.666)*i/DISCR;
+    //     param2[i] = 0.117 + (0.152-0.117)*i/DISCR;
+    //     std::cout << param1[i];
+    // }
+    // param1[0] = 9;
+    // param2[0] = 25;
+    ofstream fout;
+    fout.open("File.txt");
+    double* params = (double*)malloc(Doc.at("paramsDim"));
+    int dimension, samplesNum, expsNum, essDim, paramsDim;
+    double eps, step, timeSkip, timeSkipClP, calcTime, addSkipSteps;
+    double inits[MAX_DIMENSION];
+    Doc.at("dimension").get_to(dimension);
+    Doc.at("samplesNum").get_to(samplesNum);
+    Doc.at("expsNum").get_to(expsNum);
+    Doc.at("essDim").get_to(essDim);
+    Doc.at("paramsDim").get_to(paramsDim);
+    Doc.at("eps").get_to(eps);
+    Doc.at("timeSkip").get_to(timeSkip);
+    Doc.at("timeSkipClP").get_to(timeSkipClP);
+    Doc.at("calcTime").get_to(calcTime);
+    Doc.at("addSkipSteps").get_to(addSkipSteps);
+    Doc.at("inits").get_to(inits);
+    Doc.at("params").get_to(params);
+    
+    int samplesCounter = 0;
 
     size_t traj_dots_cnt = (size_t) ((calcTime / samplesNum + timeSkipClP) / step);
     double* traj_s = (double*)malloc(traj_dots_cnt * dimension * sizeof(double));
@@ -75,6 +85,7 @@ int main(){
     printf("%lf %lf\n", param1[0], param2[0]);
     memset(lExp1, 0., MAX_DIMENSION * sizeof(double));
     memset(lExpBw1, 0., MAX_DIMENSION * sizeof(double));
+    memset(lExpT1, 0., MAX_DIMENSION * sizeof(double));
     minPhi=300;
     for (int d = 0; d < dimension; ++d) {
         main[d] = inits[d];

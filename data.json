@@ -1,0 +1,15 @@
+{
+    "dimension": 6,
+    "addSkipSteps": 1,
+    "expsNum": 6,
+    "eps": 1,
+    "step": 0.001,
+    "timeSkip": 100,
+    "timeSkipClP": 50,
+    "calcTime": 1000,
+    "samplesNum": 1,
+    "essDim": 2,
+    "inits": [0.0000001, 0, 0, 0, 0, 0],
+    "paramsDim": 5,
+    "params": [9, 25, 2.666666666666, 0, 0.1]
+}
