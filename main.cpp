@@ -14,6 +14,7 @@ using namespace std;
 int main(){
     printf("***PROGRAM START***\n");
     void (*diffFunc)(const double*, double*, const double*) {Shimizu_3D_flow};
+    void (*diffFuncRev)(const double*, double*, const double*) {Shimizu_3D_flow_rev};
     void (*diffFuncVar)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var};
     void (*diffFuncVarTrans)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var_trans};
     void (*diffFuncVarRev)(const double*, double*, const double*, const double*) {Shimizu_3D_flow_var_rev};
@@ -40,13 +41,14 @@ int main(){
     ofstream fout;
     fout.open("File.txt");
     
+    bool bySlaveTraj = 1;
     bool type = 1; // 1 - flow
     int dimension = 3;
     int samplesNum = 1;
     int samplesCounter = 0;
     int expsNum = 3;
     int essDim = 1;
-    double eps = 1;
+    double eps = 0.00001;
     double step = 0.01;
     double timeSkip = 100;
     double timeSkipClP = 50;
@@ -95,32 +97,22 @@ int main(){
     MemoryForMatrix masForMatrix{};
 
     double paramsAll[] = {param1[0], param2[0]};
-    if ((dimension / 2 <= essDim) && (essDim !=1)) {
-        cudaAngleCUNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, paramsAll, eps, expsNum,
-                        step, timeSkip, timeSkipClP, addSkipSteps, type, essDim, &integratorParams);
-        for (int s = 0; s < samplesNum; s++) {
-            auto res = cudaAngleCUNodeCalculate(main, sub, ess, dimension,
-                diffFunc, diffFuncVar, diffFuncVarTrans,
-                paramsAll, eps, lExp, lExpBw, &minPhi,
-                expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
-                traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
-            for (int i =0; i<expsNum; i++){
-                lExp1[i] += lExp[i];
-                lExpBw1[i] += lExpBw[i];
-            }
-            samplesCounter++;
-            if (res == -1)
-                break;
-        }
-    } else {
-        printf("***START WARM***\n");
-        cudaAngleSSNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, diffFuncVarTransRev, paramsAll, eps, expsNum,
+    if (bySlaveTraj) {
+        printf("***START WITH SLAVE SS***\n");
+        cudaAngleSlaveNodeWarm(main, sub, ess, dimension, diffFunc, paramsAll, eps, expsNum,
                         step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
-        printf("***END WARM***\n");
+        printf("End Warm\n");
+        // for (int i=0;i<dimension;i++)
+        //     std::cout << main[i]<< " ";
+        // std::cout<<std::endl;
+        // for (int i =0;i<essDim;i++){
+        //     for (int j =0;j<dimension; j++)
+        //         std::cout<<sub[j+dimension*i]<<" ";
+        //     std::cout<<endl;
+        // }
         for (int s = 0; s < samplesNum; s++) {
-            auto res = cudaAngleSSNodeCalculate(main, sub, ess, dimension,
-                diffFunc, diffFuncVar, diffFuncVarRev, diffFuncVarTransRev,
-                paramsAll, eps, lExp, lExpBw, &minPhi,
+            auto res = cudaAngleSlaveNodeCalculate(main, sub, ess, dimension,
+                diffFunc, diffFuncRev, paramsAll, eps, lExp, lExpBw, &minPhi,
                 expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
                 traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
             for (int i =0; i<expsNum; i++){
@@ -132,7 +124,47 @@ int main(){
             if (res == -1)
                 break;
         }
+    } else {
+        if ((dimension / 2 <= essDim) && (essDim !=1)) {
+            printf("***START WITH CU BASIS***\n");
+            cudaAngleCUNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, paramsAll, eps, expsNum,
+                            step, timeSkip, timeSkipClP, addSkipSteps, type, essDim, &integratorParams);
+            for (int s = 0; s < samplesNum; s++) {
+                auto res = cudaAngleCUNodeCalculate(main, sub, ess, dimension,
+                    diffFunc, diffFuncVar, diffFuncVarTrans,
+                    paramsAll, eps, lExp, lExpBw, &minPhi,
+                    expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
+                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
+                for (int i =0; i<expsNum; i++){
+                    lExp1[i] += lExp[i];
+                    lExpBw1[i] += lExpBw[i];
+                }
+                samplesCounter++;
+                if (res == -1)
+                    break;
+            }
+        } else {
+            printf("***START WITH SS BASIS***\n");
+            cudaAngleSSNodeWarm(main, sub, ess, dimension, diffFunc, diffFuncVar, diffFuncVarTransRev, paramsAll, eps, expsNum,
+                            step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
+            for (int s = 0; s < samplesNum; s++) {
+                auto res = cudaAngleSSNodeCalculate(main, sub, ess, dimension,
+                    diffFunc, diffFuncVar, diffFuncVarRev, diffFuncVarTransRev,
+                    paramsAll, eps, lExp, lExpBw, &minPhi,
+                    expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
+                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
+                for (int i =0; i<expsNum; i++){
+                    lExp1[i] += lExp[i];
+                    lExpBw1[i] += lExpBw[i];
+                    lExpT1[i] +=lExpT[i];
+                }
+                samplesCounter++;
+                if (res == -1)
+                    break;
+            }
+        }
     }
+
     fout<<param1[0]<<" "<<param2[0]<<" "<<lExp1[0]/samplesCounter<<" "<< minPhi <<", ";
 
     for (int i =0; i<expsNum; i++)
