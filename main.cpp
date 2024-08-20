@@ -122,7 +122,7 @@ int main(){
     double paramsAll[] = {param1[0], param2[0]};
     if (bySlaveTraj) {
         if ((dimension / 2 <= essDim) && (essDim !=1)) {
-            printf("***START WITH SLAVE SS***\n");
+            printf("***START WITH SLAVE CU***\n");
             cudaAngleSlaveNodeWarm(main, sub, ess, dimension, diffFunc, paramsAll, eps, expsNum,
                             step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
             printf("End Warm\n");
@@ -140,7 +140,23 @@ int main(){
                     break;
             }
         } else {
-            
+            printf("***START WITH SLAVE SS***\n");
+            cudaAngleSlaveNodeWarm(main, sub, ess, dimension, diffFunc, paramsAll, eps, expsNum,
+                            step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
+            printf("End Warm\n");
+            for (int s = 0; s < samplesNum; s++) {
+                auto res = cudaAngleSlaveNodeCalculate(main, sub, ess, dimension,
+                    diffFunc, diffFuncRev, paramsAll, eps, lExp, lExpBw, &minPhi,
+                    expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
+                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
+                for (int i =0; i<expsNum; i++){
+                    lExp1[i] += lExp[i];
+                    lExpBw1[i] += lExpBw[i];
+                }
+                samplesCounter++;
+                if (res == -1)
+                    break;
+            }
         }
     } else {
         if ((dimension / 2 <= essDim) && (essDim !=1)) {
