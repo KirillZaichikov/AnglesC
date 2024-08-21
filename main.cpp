@@ -121,8 +121,14 @@ int main(){
 
     double paramsAll[] = {param1[0], param2[0]};
     if (bySlaveTraj) {
+        bool byCUbasis;
+        int backTimeVectorsCount;
         if ((dimension / 2 <= essDim) && (essDim !=1)) {
             printf("***START WITH SLAVE CU***\n");
+            byCUbasis = 1;
+            backTimeVectorsCount = dimension;
+            if (expsNum < dimension - essDim)
+                expsNum = dimension - essDim;
             cudaAngleSlaveNodeWarm(main, sub, ess, dimension, diffFunc, paramsAll, eps, expsNum,
                             step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
             printf("End Warm\n");
@@ -130,7 +136,8 @@ int main(){
                 auto res = cudaAngleSlaveNodeCalculate(main, sub, ess, dimension,
                     diffFunc, diffFuncRev, paramsAll, eps, lExp, lExpBw, &minPhi,
                     expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
-                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
+                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration,
+                    byCUbasis, backTimeVectorsCount);
                 for (int i =0; i<expsNum; i++){
                     lExp1[i] += lExp[i];
                     lExpBw1[i] += lExpBw[i];
@@ -141,6 +148,9 @@ int main(){
             }
         } else {
             printf("***START WITH SLAVE SS***\n");
+            byCUbasis = 0;
+            expsNum = dimension;
+            backTimeVectorsCount = essDim;
             cudaAngleSlaveNodeWarm(main, sub, ess, dimension, diffFunc, paramsAll, eps, expsNum,
                             step, timeSkip, timeSkipClP, type, essDim, &integratorParams, addSkipSteps);
             printf("End Warm\n");
@@ -148,7 +158,8 @@ int main(){
                 auto res = cudaAngleSlaveNodeCalculate(main, sub, ess, dimension,
                     diffFunc, diffFuncRev, paramsAll, eps, lExp, lExpBw, &minPhi,
                     expsNum, step, timeSkip, timeSkipClP, calcTime / samplesNum, addSkipSteps,
-                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration);
+                    traj_s, ncu_s, type, essDim, &integratorParams, &masForMatrix, eigenIteration,
+                    byCUbasis, backTimeVectorsCount);
                 for (int i =0; i<expsNum; i++){
                     lExp1[i] += lExp[i];
                     lExpBw1[i] += lExpBw[i];

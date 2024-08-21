@@ -543,7 +543,7 @@ void cudaAngleSlaveNodeWarm(double *main, double *sub, double *essCur, const int
             dverkStep(main, dimension, diffFunc, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
 
 
-        for (int i = 0; i < dimension; i++){
+        for (int i = 0; i < expsNum; i++){
             memcpy(&sub[i*dimension], main, dimension * sizeof(double));   
             sub[i * dimension + i] += eps;
         }
@@ -551,15 +551,15 @@ void cudaAngleSlaveNodeWarm(double *main, double *sub, double *essCur, const int
         for (int t = 0; t < Tnorm; t += 1) {
             skipCount++;
             dverkStep(main, dimension, diffFunc, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
-            for (int i = 0; i < dimension; i++)
+            for (int i = 0; i < expsNum; i++)
                 dverkStep(&sub[i * dimension], dimension, diffFunc, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
             
             if (addSkipSteps == skipCount) {
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
                         sub[i * dimension + j] -= main[j];
-                ortVecs(sub, dimension, dimension, memI->projSum);
-                normalizeVecs(sub, dimension, dimension, eps);
+                ortVecs(sub, dimension, expsNum, memI->projSum);
+                normalizeVecs(sub, dimension, expsNum, eps);
                 skipCount = 0;
                 for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
@@ -572,7 +572,7 @@ void cudaAngleSlaveNodeWarm(double *main, double *sub, double *essCur, const int
         for (double t = 0; t < timeSkip; t += 1) // Skip points to reach the attractor
             StepMAP(main, diffFunc, params, memI->arg, dimension);
 
-        for (int i = 0; i < dimension; i++){
+        for (int i = 0; i < expsNum; i++){
             memcpy(&sub[i*dimension], main, dimension * sizeof(double));   
             sub[i * dimension + i] += eps;
         }
@@ -580,17 +580,17 @@ void cudaAngleSlaveNodeWarm(double *main, double *sub, double *essCur, const int
         for (int t = 0; t < timeSkipClP; t += 1) {
             skipCount++;
             StepMAP(main, diffFunc, params, memI->arg, dimension);
-            for (int i = 0; i < dimension; i++)
+            for (int i = 0; i < expsNum; i++)
                 StepMAP(&sub[i*dimension], diffFunc, params, memI->arg, dimension);
             
             if (addSkipSteps == skipCount) {
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
                         sub[i * dimension + j] -= main[j];
-                ortVecs(sub, dimension, dimension, memI->projSum);
-                normalizeVecs(sub, dimension, dimension, eps);
+                ortVecs(sub, dimension, expsNum, memI->projSum);
+                normalizeVecs(sub, dimension, expsNum, eps);
                 skipCount = 0;
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
                         sub[i * dimension + j] += main[j];
             }
@@ -606,7 +606,8 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
                              double *params, double eps, double *lyapExp, double *lyapExpBw, double *phi,
                              int expsNum, double step, double timeSkip, double timeSkipClP, double calcTime,
                              double addSkipSteps, double *traj_dots, double *ncu_s, const bool type, const int essDim,
-                             MemoryForIntegrator * memI, MemoryForMatrix * memM, int eigenIteration) {
+                             MemoryForIntegrator * memI, MemoryForMatrix * memM, int eigenIteration, const bool byCUbasis,
+                             const int backTimeVectorsCount) {
     /*Алгоритм в случае когда размерность E^{cu} больше половины от размерности системы*/
     double main_afterForward[MAX_DIMENSION]; // to calc main traj after fw time is completed
 
@@ -624,20 +625,24 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         for (int t = 0; t < T; t += 1) {
             skipCount++;
             dverkStep(mainTrajectory, dimension, diffFunc, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
-            for (int i = 0; i < dimension; i++)
+            for (int i = 0; i < expsNum; i++)
                 dverkStep(&slaveTrajectories[i * dimension], dimension, diffFunc, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
 
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajectories[i * dimension + j] -= mainTrajectory[j];
-                ortVecs(slaveTrajectories, dimension, dimension, memI->projSum);
+                ortVecs(slaveTrajectories, dimension, expsNum, memI->projSum);
 
                 for (int i = 0; i < expsNum; i++)
                     lyapExp[i] += log(vecNorm(&slaveTrajectories[i * dimension], dimension) / eps);
 
-                normalizeVecs(slaveTrajectories, dimension, dimension, 1);
-                memcpy(ncu_s + stepCountVectors * dimension * essDim, slaveTrajectories + dimension*(dimension-essDim), sizeof(double) * dimension * essDim);
+                normalizeVecs(slaveTrajectories, dimension, expsNum, 1);
+                if (byCUbasis){
+                    memcpy(ncu_s + stepCountVectors * dimension * essDim, slaveTrajectories, sizeof(double) * dimension * essDim);
+                } else {
+                    memcpy(ncu_s + stepCountVectors * dimension * essDim, slaveTrajectories + dimension*(dimension-essDim), sizeof(double) * dimension * essDim);
+                }
                 normalizeVecs(slaveTrajectories, dimension, dimension, eps);
                 stepCountVectors++;
                 skipCount = 0;
@@ -662,7 +667,7 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         }
         // bw path
         double slaveTrajBw[MAX_DIMENSION * MAX_DIMENSION]; // exp_num * max_dimension
-        for (int i = 0; i < essDim; ++i) {
+        for (int i = 0; i < backTimeVectorsCount; ++i) {
             memcpy(&slaveTrajBw[i * dimension], main_afterForward, dimension * sizeof(double));
             slaveTrajBw[i * dimension + i] += eps;
         }
@@ -670,16 +675,16 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         skipCount = 0;
         for (int t = 0; t < Tnorm; t += 1) {
             --stepCountPoints;
-            for (int i = 0; i < essDim; i++) 
+            for (int i = 0; i < backTimeVectorsCount; i++) 
                 dverkStep(&slaveTrajBw[i * dimension], dimension, diffFuncRev, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] -= (traj_dots+stepCountPoints*dimension)[j];
-                ortVecs(slaveTrajBw, dimension, essDim, memI->projSum);
-                normalizeVecs(slaveTrajBw, dimension, essDim, eps);
+                ortVecs(slaveTrajBw, dimension, backTimeVectorsCount, memI->projSum);
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, eps);
                 skipCount=0;
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] += (traj_dots+stepCountPoints*dimension)[j];
             }
@@ -689,22 +694,27 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         skipCount = addSkipSteps;
         for (int t = 0; t < T; t += 1) {
             stepCountPoints--;
-            for (int i = 0; i < essDim; i++)
+            for (int i = 0; i < backTimeVectorsCount; i++)
                 dverkStep(&slaveTrajBw[i * dimension], dimension, diffFuncRev, params, step, memI->arg, memI->k1, memI->k2, memI->k3, memI->k4, memI->k5, memI->k6, memI->k7, memI->k8);
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] -= (traj_dots+stepCountPoints*dimension)[j];
                 stepCountVectors--;
-                ortVecs(slaveTrajBw, dimension, essDim, memI->projSum);
+                ortVecs(slaveTrajBw, dimension, backTimeVectorsCount, memI->projSum);
 
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     lyapExpBw[i] += log(vecNorm(&slaveTrajBw[i * dimension], dimension) / eps);
 
-                normalizeVecs(slaveTrajBw, dimension, essDim, 1);
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, 1);
                 for (int j = 0; j < essDim; j++)
-                    for (int i = 0; i < essDim; i++)
-                        memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + i * dimension, dimension);
+                    for (int i = 0; i < essDim; i++){
+                        if (byCUbasis) {
+                            memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + (i + dimension - essDim) * dimension, dimension);
+                        } else {
+                            memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + i * dimension, dimension);
+                        }
+                    }
                 memcpy(memM->dotProductsMatrixT, memM->dotProductsMatrix, essDim * essDim * sizeof(double));
                 matrixTranspose(memM->dotProductsMatrixT, essDim, essDim);
                 matrixMult(memM->A, memM->dotProductsMatrixT, essDim, essDim, memM->dotProductsMatrix, essDim, essDim);
@@ -715,15 +725,15 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
                     *phi = phi_cur;
                 }
                 skipCount = 0;
-                normalizeVecs(slaveTrajBw, dimension, essDim, eps);
-                for (int i = 0; i < essDim; i++)
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, eps);
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] += (traj_dots+stepCountPoints*dimension)[j];
             }
             skipCount++;
 
         }
-        for (int i = 0; i < essDim; i++) {
+        for (int i = 0; i < backTimeVectorsCount; i++) {
             lyapExpBw[i] = lyapExpBw[i] / calcTime;
         }
     }
@@ -731,24 +741,28 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         for (int t = 0; t < calcTime; t += 1) {
             skipCount++;
             StepMAP(mainTrajectory, diffFunc, params, memI->arg, dimension);
-            for (int i = 0; i < dimension; i++)
+            for (int i = 0; i < expsNum; i++)
                 StepMAP(&slaveTrajectories[i*dimension], diffFunc, params, memI->arg, dimension);
 
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajectories[i * dimension + j] -= mainTrajectory[j];
-                ortVecs(slaveTrajectories, dimension, dimension, memI->projSum);
+                ortVecs(slaveTrajectories, dimension, expsNum, memI->projSum);
 
                 for (int i = 0; i < expsNum; i++)
-                    lyapExp[i] += log(vecNorm(&slaveTrajectories[i * dimension], dimension) / 1);
+                    lyapExp[i] += log(vecNorm(&slaveTrajectories[i * dimension], dimension) / eps);
 
-                normalizeVecs(slaveTrajectories, dimension, dimension, 1);
-                memcpy(ncu_s + stepCountVectors * dimension * essDim, essCur, sizeof(double) * dimension * essDim);
-                normalizeVecs(slaveTrajectories, dimension, dimension, eps);
+                normalizeVecs(slaveTrajectories, dimension, expsNum, 1);
+                if (byCUbasis){
+                    memcpy(ncu_s + stepCountVectors * dimension * essDim, slaveTrajectories, sizeof(double) * dimension * essDim);
+                } else{
+                    memcpy(ncu_s + stepCountVectors * dimension * essDim, slaveTrajectories + dimension*(dimension-essDim), sizeof(double) * dimension * essDim);
+                }
+                normalizeVecs(slaveTrajectories, dimension, expsNum, eps);
                 stepCountVectors++;
                 skipCount = 0;
-                for (int i = 0; i < dimension; i++)
+                for (int i = 0; i < expsNum; i++)
                         for (int j = 0; j < dimension; j++)
                             slaveTrajectories[i * dimension + j] += mainTrajectory[j];
             }
@@ -768,7 +782,7 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         }
         // bw path
         double slaveTrajBw[MAX_DIMENSION * MAX_DIMENSION]; // exp_num * max_dimension
-        for (int i = 0; i < essDim; ++i) {
+        for (int i = 0; i < backTimeVectorsCount; ++i) {
             memcpy(&slaveTrajBw[i * dimension], main_afterForward, dimension * sizeof(double));
             slaveTrajBw[i * dimension + i] += eps;
         }
@@ -776,17 +790,17 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         skipCount = 0;
         for (int t = 0; t < timeSkipClP; t += 1) {
             --stepCountPoints;
-            for (int i = 0; i < essDim; i++)
+            for (int i = 0; i < backTimeVectorsCount; i++)
                 StepMAP(&slaveTrajBw[i*dimension], diffFuncRev, params, memI->arg, dimension);
 
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] -= (traj_dots+stepCountPoints*dimension)[j];
-                ortVecs(slaveTrajBw, dimension, essDim, memI->projSum);
-                normalizeVecs(slaveTrajBw, dimension, essDim, eps);
+                ortVecs(slaveTrajBw, dimension, backTimeVectorsCount, memI->projSum);
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, eps);
                 skipCount = 0;
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] += (traj_dots+stepCountPoints*dimension)[j];
             }
@@ -796,23 +810,27 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
         skipCount = addSkipSteps;
         for (int t = 0; t < calcTime; t += 1) {
             stepCountPoints--;
-            for (int i = 0; i < essDim; i++)
+            for (int i = 0; i < backTimeVectorsCount; i++)
                 StepMAP(&slaveTrajBw[i*dimension], diffFuncRev, params, memI->arg, dimension);
             if (skipCount == addSkipSteps) {
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] -= (traj_dots+stepCountPoints*dimension)[j];
                 stepCountVectors--;
-                ortVecs(slaveTrajBw, dimension, essDim, memI->projSum);
+                ortVecs(slaveTrajBw, dimension, backTimeVectorsCount, memI->projSum);
 
-                for (int i = 0; i < essDim; i++)
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     lyapExpBw[i] += log(vecNorm(&slaveTrajBw[i * dimension], dimension) / eps);
 
-
-                normalizeVecs(slaveTrajBw, dimension, essDim, 1);
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, 1);
                 for (int j = 0; j < essDim; j++)
-                    for (int i = 0; i < essDim; i++)
-                        memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + i * dimension, dimension);
+                    for (int i = 0; i < essDim; i++) {
+                        if (byCUbasis) {
+                            memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + (i + dimension - essDim) * dimension, dimension);
+                        } else {
+                            memM->dotProductsMatrix[j*essDim + i] = dotProduct(ncu_s + stepCountVectors * dimension * essDim + j * dimension, slaveTrajBw + i * dimension, dimension);
+                        }
+                    }
                 memcpy(memM->dotProductsMatrixT, memM->dotProductsMatrix, essDim * essDim * sizeof(double));
                 matrixTranspose(memM->dotProductsMatrixT, essDim, essDim);
                 matrixMult(memM->A, memM->dotProductsMatrixT, essDim, essDim, memM->dotProductsMatrix, essDim, essDim);
@@ -823,15 +841,15 @@ int cudaAngleSlaveNodeCalculate(double *mainTrajectory, double *slaveTrajectorie
                     *phi = phi_cur;
                 }
                 skipCount = 0;
-                normalizeVecs(slaveTrajBw, dimension, essDim, eps);
-                for (int i = 0; i < essDim; i++)
+                normalizeVecs(slaveTrajBw, dimension, backTimeVectorsCount, eps);
+                for (int i = 0; i < backTimeVectorsCount; i++)
                     for (int j = 0; j < dimension; j++)
                         slaveTrajBw[i * dimension + j] += (traj_dots+stepCountPoints*dimension)[j];
             
             }
             skipCount++;
         }
-        for (int i = 0; i < essDim; i++) {
+        for (int i = 0; i < backTimeVectorsCount; i++) {
             lyapExpBw[i] = lyapExpBw[i] / calcTime;
         }
     }
